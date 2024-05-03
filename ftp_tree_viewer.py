@@ -1,8 +1,8 @@
 import ftplib
 import argparse
 
-def ftp_tree(ftp, directory, indent='', show_perms=False, show_hidden=False, error_ignore=False, only_dirs=False, only_files=False):
-    """ Recursively list directories in a tree-like format with special characters and optional permissions. Filter for only files or directories if specified. """
+def ftp_tree(ftp, directory, indent='', show_perms=False, show_hidden=False, error_ignore=False, only_dirs=False, world_writable=False):
+    """ Recursively list directories in a tree-like format with special characters and optional permissions. Filter for only directories or world-writable items if specified. """
     items = []
     try:
         ftp.cwd(directory)
@@ -27,7 +27,7 @@ def ftp_tree(ftp, directory, indent='', show_perms=False, show_hidden=False, err
             continue
         if only_dirs and permissions[0] != 'd':
             continue
-        if only_files and permissions[0] == 'd':
+        if world_writable and permissions[-2] != 'w':
             continue
         short_name = name.split('/')[-1]
         prefix = '└── ' if index == last else '├── '
@@ -35,11 +35,10 @@ def ftp_tree(ftp, directory, indent='', show_perms=False, show_hidden=False, err
         if show_perms:
             line = f"{permissions} {line}"
         print(indent + line)
-        if '.' not in short_name and permissions[0] == 'd':  # Check if it's a directory
+        if '.' not in short_name and permissions[0] == 'd' and not world_writable:
             new_indent = indent + ('    ' if index == last else '│   ')
             new_dir = f"{directory}/{short_name}" if directory != '/' else f"/{short_name}"
-            if not only_files:  # Avoid recursive listing if only files should be shown
-                ftp_tree(ftp, new_dir, new_indent, show_perms, show_hidden, error_ignore, only_dirs, only_files)
+            ftp_tree(ftp, new_dir, new_indent, show_perms, show_hidden, error_ignore, only_dirs, world_writable)
 
 def parse_host_port(host_port_str):
     if ':' in host_port_str:
@@ -77,11 +76,11 @@ def main():
     parser_list.add_argument('--hidden', action='store_true', help='Show hidden files and directories')
     parser_list.add_argument('--error-ignore', action='store_true', help='Ignore and skip errors during listing')
     parser_list.add_argument('--only-dir', action='store_true', help='List only directories')
-    parser_list.add_argument('--only-file', action='store_true', help='List only files')
+    parser_list.add_argument('--world-writable', action='store_true', help='List only world-writable files and directories')
     parser_list.epilog = "Examples:\n" \
                          "  Basic Usage: python ftp_tree_viewer.py list -u username -p password 192.168.1.100\n" \
-                         "  List Only Directories: python ftp_tree_viewer.py list -u username -p password 192.168.1.100 --only-dir\n" \
-                         "  List Only Files: python ftp_tree_viewer.py list -u username -p password 192.168.1.100 --only-file\n" \
+                         "  Directories Only: python ftp_tree_viewer.py list -u username -p password 192.168.1.100 --only-dir\n" \
+                         "  World-Writable Only: python ftp_tree_viewer.py list -u username -p password 192.168.1.100 --world-writable\n" \
                          "  With Permissions: python ftp_tree_viewer.py list -u username -p password 192.168.1.100 --perms\n" \
                          "  Custom Directory: python ftp_tree_viewer.py list -u username -p password 192.168.1.100 -d /path/to/directory\n" \
                          "  Show Hidden Files: python ftp_tree_viewer.py list -u username -p password 192.168.1.100 --hidden"
@@ -97,7 +96,7 @@ def main():
     parser_cat.add_argument('--error-ignore', action='store_true', help='Ignore and skip errors during file display')
     parser_cat.epilog = "Examples:\n" \
                         "  Display File: python ftp_tree_viewer.py cat -u username -p password 192.168.1.100 -f /path/to/file\n" \
-                        "  Display File with Permissions: python ftp_tree_viewer.py cat -u username -p password 192.168.1.100 -f /path/to/file --perms"
+                        "  With Permissions: python ftp_tree_viewer.py cat -u username -p password 192.168.1.100 -f /path/to/file --perms"
 
     args = parser.parse_args()
 
@@ -112,7 +111,7 @@ def main():
         if args.command == 'list':
             print("Directory listing:")
             ftp_tree(ftp, args.directory, show_perms=args.perms, show_hidden=args.hidden,
-                     error_ignore=args.error_ignore, only_dirs=args.only_dir, only_files=args.only_file)
+                     error_ignore=args.error_ignore, only_dirs=args.only_dir, world_writable=args.world_writable)
         elif args.command == 'cat':
             print("File content:")
             cat_file(ftp, args.file, show_perms=args.perms, error_ignore=args.error_ignore)
